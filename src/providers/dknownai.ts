@@ -1,6 +1,6 @@
 import { fetchWithSsrFGuard } from "openclaw/plugin-sdk/ssrf-runtime";
-import type { CheckContext, GuardrailsDecision, HttpConfig, Logger } from "../config.js";
-import type { GuardrailsProviderAdapter } from "../provider-types.js";
+import type { CheckContext, GuardrailsDecision, Logger } from "../config.js";
+import type { GuardrailsProviderAdapter, ResolvedHttpConfig } from "../provider-types.js";
 
 export const DKNOWNAI_DEFAULT_URL = "https://open.dknownai.com/v1/guard";
 export const DKNOWNAI_CN_DEFAULT_URL = "https://open.dknowc.cn/v1/guard";
@@ -62,7 +62,7 @@ export function createDKnownAIAdapter(
     check: async (
       text: string,
       context: CheckContext,
-      config: HttpConfig,
+      config: ResolvedHttpConfig,
       fallbackOnError: "pass" | "block",
       timeoutMs: number,
     ): Promise<GuardrailsDecision> => {

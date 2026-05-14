@@ -11,12 +11,38 @@ vi.mock("./src/http-connector.js", () => {
   };
 });
 
+vi.mock("openclaw/plugin-sdk/runtime-secret-resolution", () => {
+  return {
+    resolveSecretRefValues: vi.fn().mockResolvedValue(new Map()),
+  };
+});
+
+vi.mock("openclaw/plugin-sdk/secret-ref-runtime", () => {
+  return {
+    coerceSecretRef: vi.fn((value: unknown) => {
+      if (
+        value !== null &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        typeof (value as any).source === "string" &&
+        typeof (value as any).provider === "string" &&
+        typeof (value as any).id === "string"
+      ) {
+        return value;
+      }
+      return null;
+    }),
+  };
+});
+
 import plugin from "./index.js";
 import { resolveHttpAdapter } from "./src/http-connector.js";
+import { resolveSecretRefValues } from "openclaw/plugin-sdk/runtime-secret-resolution";
 
 function makeApi(pluginConfig: Record<string, unknown> = {}) {
   return {
     pluginConfig,
+    config: { secretProviders: {} },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     on: vi.fn(),
     registerService: vi.fn(),
@@ -341,7 +367,88 @@ describe("index.ts channel routing", () => {
     expect(capturedConfig.apiKey).toBe("sk-slack-override");
   });
 
-  it("registered provider: adapter init separates same provider with different config", async () => {
+  it("resolves SecretRef object apiKey through OpenClaw SDK at check() boundary", async () => {
+    let capturedConfig: any;
+    vi.mocked(resolveSecretRefValues).mockResolvedValue(
+      new Map([["env:openclaw:DKNOWNAI_API_KEY", "dk-resolved"]]),
+    );
+    vi.mocked(resolveHttpAdapter).mockResolvedValue({
+      check: vi.fn().mockImplementation((_text: string, _ctx: any, config: any) => {
+        capturedConfig = config;
+        return Promise.resolve({ action: "pass" });
+      }),
+    });
+
+    const api = makeApi({
+      connector: "http",
+      http: {
+        provider: "dknownai",
+        apiKey: { source: "env", provider: "openclaw", id: "DKNOWNAI_API_KEY" },
+      },
+    });
+    plugin.register(api);
+
+    const handler = api.on.mock.calls[0][1];
+    await handler({ content: "hi", channel: "telegram" }, { channelId: "telegram" });
+    expect(resolveSecretRefValues).toHaveBeenCalledWith(
+      [{ source: "env", provider: "openclaw", id: "DKNOWNAI_API_KEY" }],
+      { config: api.config },
+    );
+    expect(capturedConfig.apiKey).toBe("dk-resolved");
+    expect(typeof capturedConfig.apiKey).toBe("string");
+  });
+
+  it("does not invoke SecretRef resolver for plain string apiKey", async () => {
+    let capturedConfig: any;
+    vi.mocked(resolveSecretRefValues).mockClear();
+    vi.mocked(resolveHttpAdapter).mockResolvedValue({
+      check: vi.fn().mockImplementation((_text: string, _ctx: any, config: any) => {
+        capturedConfig = config;
+        return Promise.resolve({ action: "pass" });
+      }),
+    });
+
+    const api = makeApi({
+      connector: "http",
+      http: { provider: "dknownai", apiKey: "dk-plain" },
+    });
+    plugin.register(api);
+
+    const handler = api.on.mock.calls[0][1];
+    await handler({ content: "hi", channel: "telegram" }, { channelId: "telegram" });
+
+    expect(resolveSecretRefValues).not.toHaveBeenCalled();
+    expect(capturedConfig.apiKey).toBe("dk-plain");
+  });
+
+  it("uses fallback when SecretRef resolver fails", async () => {
+    vi.mocked(resolveSecretRefValues).mockRejectedValue(new Error("secret unavailable"));
+    vi.mocked(resolveHttpAdapter).mockResolvedValue({
+      check: vi.fn().mockResolvedValue({ action: "pass" }),
+    });
+
+    const api = makeApi({
+      connector: "http",
+      http: {
+        provider: "dknownai",
+        apiKey: { source: "env", provider: "openclaw", id: "DKNOWNAI_API_KEY" },
+      },
+      fallbackOnError: "block",
+      blockMessage: "Secret unavailable",
+    });
+    plugin.register(api);
+
+    const handler = api.on.mock.calls[0][1];
+    const result = await handler({ content: "hi", channel: "telegram" }, { channelId: "telegram" });
+
+    expect(result.handled).toBe(true);
+    expect(result.text).toBe("Secret unavailable");
+    expect(api.logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("failed to resolve SecretRef apiKey"),
+    );
+  });
+
+  it("registered provider: adapter init dedupes when only apiKey differs", async () => {
     vi.mocked(resolveHttpAdapter).mockClear();
 
     const checkFn = vi.fn().mockResolvedValue({ action: "pass" });
@@ -361,13 +468,157 @@ describe("index.ts channel routing", () => {
     });
     plugin.register(api);
 
-    expect(resolveHttpAdapter).toHaveBeenCalledTimes(2);
+    // Different apiKey alone must not produce a second adapter init — the
+    // secret is intentionally excluded from the adapter dedupe key.
+    expect(resolveHttpAdapter).toHaveBeenCalledTimes(1);
 
     const handler = api.on.mock.calls[0][1];
 
     await handler({ content: "a", channel: "telegram" }, { channelId: "telegram" });
     await handler({ content: "b", channel: "discord" }, { channelId: "discord" });
     expect(checkFn).toHaveBeenCalledTimes(2);
+
+    // Each channel must still see its own resolved apiKey at check() time.
+    const calls = checkFn.mock.calls;
+    expect(calls[0][2].apiKey).toBe("ms-A");
+    expect(calls[1][2].apiKey).toBe("ms-B");
+  });
+
+  it("registered provider: adapter init forks when non-secret HTTP fields differ", async () => {
+    vi.mocked(resolveHttpAdapter).mockClear();
+
+    vi.mocked(resolveHttpAdapter).mockResolvedValue({
+      check: vi.fn().mockResolvedValue({ action: "pass" }),
+    });
+
+    const api = makeApi({
+      connector: "http",
+      http: { provider: "my-safety", apiKey: "shared", apiUrl: "https://a.example" },
+      channels: {
+        discord: {
+          http: { apiUrl: "https://b.example", apiKey: "shared" },
+        },
+      },
+    });
+    plugin.register(api);
+
+    expect(resolveHttpAdapter).toHaveBeenCalledTimes(2);
+  });
+
+  it("SecretRef with file source: resolves through SDK", async () => {
+    let capturedConfig: any;
+    vi.mocked(resolveSecretRefValues).mockResolvedValue(
+      new Map([["file:my-json-provider:/providers/dknownai/apiKey", "dk-file-resolved"]]),
+    );
+    vi.mocked(resolveHttpAdapter).mockResolvedValue({
+      check: vi.fn().mockImplementation((_text: string, _ctx: any, config: any) => {
+        capturedConfig = config;
+        return Promise.resolve({ action: "pass" });
+      }),
+    });
+
+    const api = makeApi({
+      connector: "http",
+      http: {
+        provider: "dknownai",
+        apiKey: { source: "file", provider: "my-json-provider", id: "/providers/dknownai/apiKey" },
+      },
+    });
+    plugin.register(api);
+
+    const handler = api.on.mock.calls[0][1];
+    await handler({ content: "hi", channel: "telegram" }, { channelId: "telegram" });
+
+    expect(resolveSecretRefValues).toHaveBeenCalledWith(
+      [{ source: "file", provider: "my-json-provider", id: "/providers/dknownai/apiKey" }],
+      { config: api.config },
+    );
+    expect(capturedConfig.apiKey).toBe("dk-file-resolved");
+  });
+
+  it("SecretRef with exec source: resolves through SDK", async () => {
+    let capturedConfig: any;
+    vi.mocked(resolveSecretRefValues).mockResolvedValue(
+      new Map([["exec:vault:openai/api-key", "sk-vault-resolved"]]),
+    );
+    vi.mocked(resolveHttpAdapter).mockResolvedValue({
+      check: vi.fn().mockImplementation((_text: string, _ctx: any, config: any) => {
+        capturedConfig = config;
+        return Promise.resolve({ action: "pass" });
+      }),
+    });
+
+    const api = makeApi({
+      connector: "http",
+      http: {
+        provider: "openai",
+        apiKey: { source: "exec", provider: "vault", id: "openai/api-key" },
+      },
+    });
+    plugin.register(api);
+
+    const handler = api.on.mock.calls[0][1];
+    await handler({ content: "hi", channel: "telegram" }, { channelId: "telegram" });
+
+    expect(resolveSecretRefValues).toHaveBeenCalledWith(
+      [{ source: "exec", provider: "vault", id: "openai/api-key" }],
+      { config: api.config },
+    );
+    expect(capturedConfig.apiKey).toBe("sk-vault-resolved");
+  });
+
+  it("mixed SecretRef sources across channels: each resolves independently", async () => {
+    let capturedConfigs: any[] = [];
+    vi.mocked(resolveSecretRefValues).mockImplementation((refs) => {
+      return Promise.resolve(
+        new Map(
+          refs.map((ref) => [
+            `${ref.source}:${ref.provider}:${ref.id}`,
+            `resolved-${ref.source}-${ref.id}`,
+          ]),
+        ),
+      );
+    });
+    vi.mocked(resolveHttpAdapter).mockResolvedValue({
+      check: vi.fn().mockImplementation((_text: string, _ctx: any, config: any) => {
+        capturedConfigs.push(config);
+        return Promise.resolve({ action: "pass" });
+      }),
+    });
+
+    const api = makeApi({
+      connector: "http",
+      http: {
+        provider: "dknownai",
+        apiKey: { source: "env", provider: "openclaw", id: "DKNOWNAI_API_KEY" },
+      },
+      channels: {
+        discord: {
+          http: {
+            provider: "dknownai",
+            apiKey: { source: "file", provider: "file-provider", id: "/discord/key" },
+          },
+        },
+        slack: {
+          http: {
+            provider: "dknownai",
+            apiKey: { source: "exec", provider: "1password", id: "slack" },
+          },
+        },
+      },
+    });
+    plugin.register(api);
+
+    const handler = api.on.mock.calls[0][1];
+
+    await handler({ content: "global", channel: "telegram" }, { channelId: "telegram" });
+    await handler({ content: "discord", channel: "discord" }, { channelId: "discord" });
+    await handler({ content: "slack", channel: "slack" }, { channelId: "slack" });
+
+    expect(capturedConfigs).toHaveLength(3);
+    expect(capturedConfigs[0].apiKey).toBe("resolved-env-DKNOWNAI_API_KEY");
+    expect(capturedConfigs[1].apiKey).toBe("resolved-file-/discord/key");
+    expect(capturedConfigs[2].apiKey).toBe("resolved-exec-slack");
   });
 
   it("registered provider: adapter init reuses same config with reordered params", async () => {

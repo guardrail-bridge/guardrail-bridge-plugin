@@ -5,6 +5,18 @@
   "activation": {
     "onStartup": true
   },
+  "uiHints": {
+    "http.apiKey": {
+      "label": "Guardrail HTTP API Key",
+      "help": "Use an OpenClaw SecretRef when possible; plain string values are supported but not recommended.",
+      "sensitive": true
+    },
+    "channels.*.http.apiKey": {
+      "label": "Channel Guardrail HTTP API Key",
+      "help": "Channel-specific OpenClaw SecretRef or plain string API key. Channel keys do not inherit across provider/apiUrl retargets unless explicitly configured.",
+      "sensitive": true
+    }
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -24,8 +36,8 @@
             "description": "HTTP provider name. Built-in: 'dknownai', 'dknownai-cn', 'secra', 'hidylan'. Built-in apiKey behavior: 'dknownai', 'dknownai-cn', and 'secra' require apiKey; 'hidylan' currently treats apiKey as optional. Custom providers can be registered via registerHttpProvider()."
           },
           "apiKey": {
-            "type": "string",
-            "description": "Provider API key. Required by built-in 'dknownai', 'dknownai-cn', and 'secra'; optional for built-in 'hidylan'. Built-in providers choose their own auth header format."
+            "type": ["string", "object"],
+            "description": "Provider API key as a plain string or OpenClaw SecretRef. Required by built-in 'dknownai', 'dknownai-cn', and 'secra'; optional for built-in 'hidylan'. Plain strings are supported but not recommended."
           },
           "apiUrl": {
             "type": "string",
@@ -103,7 +115,7 @@
               "additionalProperties": false,
               "properties": {
                 "provider": { "type": "string" },
-                "apiKey": { "type": "string" },
+                "apiKey": { "type": ["string", "object"] },
                 "apiUrl": { "type": "string" },
                 "model": { "type": "string" },
                 "params": { "type": "object", "additionalProperties": true }

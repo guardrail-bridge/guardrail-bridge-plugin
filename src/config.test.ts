@@ -103,6 +103,22 @@ describe("resolveConfig — http sub-config", () => {
     expect(config.http.apiKey).toBe("");
     expect(config.http.apiUrl).toBe("");
   });
+
+  it("keeps http apiKey input as string or object", () => {
+    const config = resolveConfig({
+      connector: "http",
+      http: {
+        provider: "secra",
+        apiKey: { source: "env", provider: "openclaw", id: "SECRA_API_KEY" },
+      },
+    });
+
+    expect(config.http.apiKey).toEqual({
+      source: "env",
+      provider: "openclaw",
+      id: "SECRA_API_KEY",
+    });
+  });
 });
 
 describe("resolveConfig — blacklist sub-config", () => {
@@ -398,6 +414,30 @@ describe("resolveChannelConfig", () => {
     });
     const effective = resolveChannelConfig(global, "telegram", logger);
     expect(effective.http.apiKey).toBe("");
+  });
+
+  it("drops inherited secret input when channel retargets provider without its own apiKey", () => {
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const global = resolveConfig({
+      connector: "http",
+      http: {
+        provider: "secra",
+        apiKey: { source: "env", provider: "openclaw", id: "SECRA_API_KEY" },
+        apiUrl: "https://secra.example",
+      },
+      channels: {
+        review: {
+          http: {
+            provider: "hidylan",
+          },
+        },
+      },
+    });
+
+    const effective = resolveChannelConfig(global, "review", logger);
+
+    expect(effective.http.apiKey).toBe("");
+    expect(logger.warn).toHaveBeenCalled();
   });
 
   it("does NOT inherit global apiKey when channel only overrides apiUrl", () => {

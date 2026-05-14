@@ -54,7 +54,11 @@ When `blacklistFile: true` is used for the first time and the default file does 
   connector: "http",
   http: {
     provider: "dknownai",               // or "dknownai-cn" / "secra" / "hidylan" / a custom provider
-    apiKey: "${DKNOWNAI_API_KEY}",
+    apiKey: {                           // OpenClaw SecretRef (recommended)
+      source: "env",
+      provider: "default",
+      id: "DKNOWNAI_API_KEY"
+    },
     apiUrl: "",                         // optional endpoint override
     model: "",                          // ignored by current built-in providers
     params: {},                         // provider-specific parameters
@@ -111,7 +115,14 @@ Built-in provider names (`dknownai`, `dknownai-cn`, `secra`, `hidylan`) are rese
     channels: {
       "discord:@announcements": {
         connector: "http",
-        http: { provider: "dknownai", apiKey: "${DKNOWNAI_API_KEY}" },
+        http: {
+          provider: "dknownai",
+          apiKey: {
+            source: "env",
+            provider: "default",
+            id: "DKNOWNAI_API_KEY"
+          }
+        },
         blockMessage: "Only compliant content is allowed in the announcements channel.",
       },
       "telegram:@vip": {
@@ -126,9 +137,41 @@ Built-in provider names (`dknownai`, `dknownai-cn`, `secra`, `hidylan`) are rese
 
 Channel fields are partial overrides. `http` and `blacklist` are shallow-merged with the global objects. Scalar fields such as `blockMessage`, `fallbackOnError`, and `timeoutMs` directly replace the global value.
 
-## 6. Troubleshooting
+## 6. API Key Configuration
+
+Guardrail Bridge supports OpenClaw SecretRef for secure API key management.
+
+### Quick Example
+
+```json5
+{
+  "http": {
+    "provider": "dknownai",
+    "apiKey": {
+      "source": "env",
+      "provider": "default",
+      "id": "DKNOWNAI_API_KEY"
+    }
+  }
+}
+```
+
+SecretRef supports three sources:
+- `env`: Environment variables
+- `file`: JSON files (JSON Pointer paths)
+- `exec`: External commands (1Password, Vault, sops)
+
+For detailed SecretRef configuration, see the [OpenClaw Secrets documentation](https://docs.openclaw.ai/gateway/secrets).
+
+### Plugin Behavior
+
+- **Runtime resolution**: SecretRef is resolved at each `check()` boundary
+- **Minimal secret residency**: Plaintext secrets exist in memory only during request processing
+- **Error handling**: SecretRef resolution failures follow `fallbackOnError` configuration
+
+## 7. Troubleshooting
 
 - On startup, the plugin logs `guardrail-bridge: plugin registered (...)` with the enabled channel handlers.
 - If no effective connector is configured, it logs `guardrail-bridge: no effective connector configured, plugin disabled`.
-- If HTTP connector initialization fails, such as when `apiKey` is missing, it logs `guardrail-bridge: failed to init HTTP adapter: ...` and follows `fallbackOnError`.
+- If HTTP connector initialization fails (e.g., missing apiKey or SecretRef resolution failure), it logs `guardrail-bridge: failed to init HTTP adapter: ...` and follows `fallbackOnError`.
 - The blacklist connector writes the default keyword file on first use when `blacklistFile: true`. Use a custom path or `false` if you do not want this side effect.

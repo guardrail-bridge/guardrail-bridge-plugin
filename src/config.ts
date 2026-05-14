@@ -28,9 +28,11 @@ export type GuardrailsDecision = {
 export type BackendFn = (text: string, context: CheckContext) => Promise<GuardrailsDecision>;
 
 // ── HTTP config ─────────────────────────────────────────────────────────
+export type SecretInputValue = string | Record<string, unknown> | "";
+
 export type HttpConfig = {
   provider: HttpProviderType;
-  apiKey: string;
+  apiKey: SecretInputValue;
   apiUrl: string;
   model: string;
   params: Record<string, unknown>;
@@ -250,7 +252,7 @@ function resolveHttpConfig(http: unknown): HttpConfig {
   const raw = http as Record<string, unknown>;
   return {
     provider: typeof raw.provider === "string" ? raw.provider : "",
-    apiKey: typeof raw.apiKey === "string" ? raw.apiKey : "",
+    apiKey: resolveSecretInputValue(raw.apiKey),
     apiUrl: typeof raw.apiUrl === "string" ? raw.apiUrl : "",
     model: typeof raw.model === "string" ? raw.model : "",
     params:
@@ -258,6 +260,16 @@ function resolveHttpConfig(http: unknown): HttpConfig {
         ? (raw.params as Record<string, unknown>)
         : {},
   };
+}
+
+function resolveSecretInputValue(value: unknown): SecretInputValue {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    return { ...(value as Record<string, unknown>) };
+  }
+  return "";
 }
 
 function resolveBlacklistConfig(value: unknown): BlacklistConfig {
@@ -316,8 +328,8 @@ function resolveChannelOverride(raw: Record<string, unknown>): ChannelOverrideCo
     if (typeof httpRaw.provider === "string") {
       httpOverride.provider = httpRaw.provider;
     }
-    if (typeof httpRaw.apiKey === "string") {
-      httpOverride.apiKey = httpRaw.apiKey;
+    if (httpRaw.apiKey !== undefined) {
+      httpOverride.apiKey = resolveSecretInputValue(httpRaw.apiKey);
     }
     if (typeof httpRaw.apiUrl === "string") {
       httpOverride.apiUrl = httpRaw.apiUrl;

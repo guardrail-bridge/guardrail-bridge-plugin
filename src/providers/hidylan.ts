@@ -1,6 +1,6 @@
 import { fetchWithSsrFGuard } from "openclaw/plugin-sdk/ssrf-runtime";
-import type { CheckContext, GuardrailsDecision, HttpConfig, Logger } from "../config.js";
-import type { GuardrailsProviderAdapter } from "../provider-types.js";
+import type { CheckContext, GuardrailsDecision, Logger } from "../config.js";
+import type { GuardrailsProviderAdapter, ResolvedHttpConfig } from "../provider-types.js";
 
 const HIDYLAN_DEFAULT_URL = "https://hidylan.ai/v1/injection-check";
 const HIDYLAN_SYSTEM_PROMPT =
@@ -39,7 +39,7 @@ export function createHidylanAdapter(_logger: Logger): GuardrailsProviderAdapter
     async check(
       text: string,
       _context: CheckContext,
-      config: HttpConfig,
+      config: ResolvedHttpConfig,
       fallbackOnError: "pass" | "block",
       timeoutMs: number,
     ): Promise<GuardrailsDecision> {

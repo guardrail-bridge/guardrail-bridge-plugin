@@ -8,3 +8,4 @@ coverage/
 *.tgz
 .idea/
 .claude/
+.local/

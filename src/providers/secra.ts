@@ -1,6 +1,6 @@
 import { fetchWithSsrFGuard } from "openclaw/plugin-sdk/ssrf-runtime";
-import type { CheckContext, GuardrailsDecision, HttpConfig, Logger } from "../config.js";
-import type { GuardrailsProviderAdapter } from "../provider-types.js";
+import type { CheckContext, GuardrailsDecision, Logger } from "../config.js";
+import type { GuardrailsProviderAdapter, ResolvedHttpConfig } from "../provider-types.js";
 
 const SECRA_DEFAULT_URL = "https://secra-backend-production.up.railway.app";
 
@@ -37,7 +37,7 @@ export function createSecraAdapter(logger: Logger): GuardrailsProviderAdapter {
     async check(
       text: string,
       _context: CheckContext,
-      config: HttpConfig,
+      config: ResolvedHttpConfig,
       fallbackOnError: "pass" | "block",
       timeoutMs: number,
     ): Promise<GuardrailsDecision> {

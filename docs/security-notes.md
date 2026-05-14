@@ -14,7 +14,7 @@ These layers are complementary and do not replace each other.
 ### HTTP connector
 
 - All built-in providers send requests through the SDK `fetchWithSsrFGuard`, so the OpenClaw host can enforce SSRF policy, private-network blocking, host allowlists, and timeouts.
-- Prefer injecting `apiKey` with OpenClaw environment substitution such as `${VAR_NAME}` instead of writing secrets directly in config files.
+- API keys are resolved at runtime through OpenClaw SecretRef. The plugin receives `apiKey` as either a plain string or a SecretRef object, resolves it at each check() boundary, and never stores the plaintext secret in long-lived state.
 - `timeoutMs` defaults to 5 seconds and is capped at 30 seconds. Timeout behavior follows `fallbackOnError`.
 
 ### Blacklist connector

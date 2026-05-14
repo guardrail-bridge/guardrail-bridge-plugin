@@ -1,10 +1,22 @@
 import { createHash } from "node:crypto";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
+import { resolveSecretRefValues } from "openclaw/plugin-sdk/runtime-secret-resolution";
+import { coerceSecretRef, type SecretRef } from "openclaw/plugin-sdk/secret-ref-runtime";
 import { createBlacklistBackend } from "./src/builtin-blacklist-connector.js";
 import { resolveChannelConfig, resolveConfig } from "./src/config.js";
-import type { BackendFn, BlacklistConfig, EffectiveChannelConfig, HttpConfig } from "./src/config.js";
+import type {
+  BackendFn,
+  BlacklistConfig,
+  EffectiveChannelConfig,
+  HttpConfig,
+  SecretInputValue,
+} from "./src/config.js";
 import { createGuardrailsHandler } from "./src/handler.js";
-import { resolveHttpAdapter, type GuardrailsProviderAdapter } from "./src/http-connector.js";
+import {
+  resolveHttpAdapter,
+  type GuardrailsProviderAdapter,
+  type ResolvedHttpConfig,
+} from "./src/http-connector.js";
 
 const plugin = {
   id: "guardrail-bridge",
@@ -106,18 +118,37 @@ const plugin = {
       return JSON.stringify(value);
     }
 
+    // Adapter dedupe deliberately excludes apiKey so the secret never reaches
+    // the long-lived hash key, and channels sharing non-sensitive HTTP config
+    // share one adapter init even when their apiKeys differ.
     function httpAdapterKey(http: HttpConfig): string {
       return createHash("sha256")
         .update(
           stableStringify({
             provider: http.provider,
-            apiKey: http.apiKey,
             apiUrl: http.apiUrl,
             model: http.model,
             params: http.params,
           }),
         )
         .digest("hex");
+    }
+
+    function secretRefKey(ref: SecretRef): string {
+      return `${ref.source}:${ref.provider}:${ref.id}`;
+    }
+
+    async function resolveApiKeyValue(value: SecretInputValue): Promise<string> {
+      if (typeof value === "string") {
+        return value;
+      }
+      const ref = coerceSecretRef(value);
+      if (!ref) {
+        return "";
+      }
+      const resolved = await resolveSecretRefValues([ref], { config: api.config });
+      const resolvedValue = resolved.get(secretRefKey(ref));
+      return typeof resolvedValue === "string" ? resolvedValue : "";
     }
 
     if (usedConnectors.has("blacklist")) {
@@ -165,6 +196,10 @@ const plugin = {
       if (!entry) {
         return async () => ({ action: fallbackOnError });
       }
+      // Capture only the non-sensitive HTTP fields in the closure. The secret
+      // input value is also captured but the plaintext apiKey is rebuilt per
+      // check() so it never leaks into long-lived state shared across calls.
+      const apiKeyInput = http.apiKey;
       return async (text, context) => {
         if (!entry.adapter && !entry.initFailed) {
           await entry.initPromise;
@@ -172,7 +207,23 @@ const plugin = {
         if (!entry.adapter) {
           return { action: fallbackOnError };
         }
-        return entry.adapter.check(text, context, http, fallbackOnError, timeoutMs);
+
+        let apiKey: string;
+        try {
+          apiKey = await resolveApiKeyValue(apiKeyInput);
+        } catch (err) {
+          logger.error(`guardrail-bridge: failed to resolve SecretRef apiKey: ${String(err)}`);
+          return { action: fallbackOnError };
+        }
+
+        const resolved: ResolvedHttpConfig = {
+          provider: http.provider,
+          apiKey,
+          apiUrl: http.apiUrl,
+          model: http.model,
+          params: http.params,
+        };
+        return entry.adapter.check(text, context, resolved, fallbackOnError, timeoutMs);
       };
     }
 

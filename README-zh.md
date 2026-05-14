@@ -102,7 +102,11 @@
           connector: "http",
           http: {
             provider: "dknownai",
-            apiKey: "${DKNOWNAI_API_KEY}",
+            apiKey: {                     // OpenClaw SecretRef
+              source: "env",
+              provider: "default",
+              id: "DKNOWNAI_API_KEY"
+            },
           },
           fallbackOnError: "block",
         },
@@ -124,7 +128,11 @@
           connector: "http",
           http: {
             provider: "dknownai-cn",
-            apiKey: "${DKNOWNAI_CN_API_KEY}",
+            apiKey: {                     // OpenClaw SecretRef
+              source: "env",
+              provider: "default",
+              id: "DKNOWNAI_CN_API_KEY"
+            },
           },
           fallbackOnError: "block",
         },
@@ -146,7 +154,11 @@
           connector: "http",
           http: {
             provider: "secra",
-            apiKey: "${SECRA_API_KEY}",
+            apiKey: {                     // OpenClaw SecretRef
+              source: "env",
+              provider: "default",
+              id: "SECRA_API_KEY"
+            },
           },
           fallbackOnError: "block",
         },
@@ -168,9 +180,13 @@
           connector: "http",
           http: {
             provider: "hidylan",
-            apiKey: "${HIDYLAN_API_KEY}",
+            apiKey: {
+              source: "env",
+              provider: "default",
+              id: "HIDYLAN_API_KEY"
+            },
           },
-          fallbackOnError: "block",
+          fallbackOnError: "pass",
         },
       },
     },
@@ -180,26 +196,35 @@
 
 ### 配置 API Key
 
-有三种方式提供 API key：
+Guardrail Bridge 支持 [OpenClaw SecretRef](https://docs.openclaw.ai/gateway/secrets) 进行安全的密钥管理。
 
-建议按 provider 使用不同的环境变量名，便于区分，例如 `DKNOWNAI_API_KEY`、`DKNOWNAI_CN_API_KEY`、`SECRA_API_KEY`、`HIDYLAN_API_KEY`。
+**使用 SecretRef**（推荐）：
 
-1. **环境变量**（推荐）：
+```json5
+{
+  "http": {
+    "provider": "dknownai",
+    "apiKey": {
+      "source": "env",
+      "provider": "default",
+      "id": "DKNOWNAI_API_KEY"
+    }
+  }
+}
+```
 
-   ```json5
-   "apiKey": "${DKNOWNAI_API_KEY}"
-   ```
+SecretRef 支持三种来源：
+- `env`：环境变量
+- `file`：JSON 文件（JSON Pointer 路径）
+- `exec`：外部命令（1Password、Vault、sops）
 
-   在启动 OpenClaw 前设置环境变量：
-   ```bash
-   export DKNOWNAI_API_KEY=sk-...
-   ```
+**明文密钥**（不推荐生产环境）：
 
-2. **明文**（不推荐生产环境使用）：
+```json5
+"apiKey": "sk-..."
+```
 
-   ```json5
-   "apiKey": "sk-..."
-   ```
+> **⚠️ 安全警告**：切勿将明文 API Key 提交到版本控制系统。生产环境务必使用 SecretRef。
 
 3. **按 channel 覆写**：
 
@@ -212,7 +237,11 @@
              connector: "http",
              http: {
                provider: "dknownai",
-               apiKey: "${DKNOWNAI_API_KEY}",
+               apiKey: {
+                source: "env",
+                provider: "default",
+                id: "DKNOWNAI_API_KEY"
+              },
              },
              blockMessage: "公告频道仅接受合规内容。",
            },

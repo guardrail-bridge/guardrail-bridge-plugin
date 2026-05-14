@@ -102,9 +102,13 @@ Enable the plugin in the OpenClaw config:
           connector: "http",
           http: {
             provider: "dknownai",
-            apiKey: "${DKNOWNAI_API_KEY}",
+            apiKey: {
+              source: "env",
+              provider: "default",
+              id: "DKNOWNAI_API_KEY"
+            }
           },
-          fallbackOnError: "block",
+          fallbackOnError: "pass",
         },
       },
     },
@@ -124,9 +128,13 @@ Enable the plugin in the OpenClaw config:
           connector: "http",
           http: {
             provider: "dknownai-cn",
-            apiKey: "${DKNOWNAI_CN_API_KEY}",
+            apiKey: {
+              source: "env",
+              provider: "default",
+              id: "DKNOWNAI_CN_API_KEY"
+            },
           },
-          fallbackOnError: "block",
+          fallbackOnError: "pass",
         },
       },
     },
@@ -146,9 +154,13 @@ Enable the plugin in the OpenClaw config:
           connector: "http",
           http: {
             provider: "secra",
-            apiKey: "${SECRA_API_KEY}",
+            apiKey: {
+              source: "env",
+              provider: "default",
+              id: "SECRA_API_KEY"
+            }
           },
-          fallbackOnError: "block",
+          fallbackOnError: "pass",
         },
       },
     },
@@ -168,9 +180,13 @@ Enable the plugin in the OpenClaw config:
           connector: "http",
           http: {
             provider: "hidylan",
-            apiKey: "${HIDYLAN_API_KEY}",
+            apiKey: {
+              source: "env",
+              provider: "default",
+              id: "HIDYLAN_API_KEY"
+            },
           },
-          fallbackOnError: "block",
+          fallbackOnError: "pass",
         },
       },
     },
@@ -180,47 +196,65 @@ Enable the plugin in the OpenClaw config:
 
 ### Configuring API Keys
 
-There are three ways to provide API keys:
+Guardrail Bridge supports [OpenClaw SecretRef](https://docs.openclaw.ai/gateway/secrets) for secure credential management. API keys are resolved at runtime from external sources and never stored in plaintext in configuration files.
 
-Use provider-specific environment variable names so users can tell connectors apart, for example `DKNOWNAI_API_KEY`, `DKNOWNAI_CN_API_KEY`, `SECRA_API_KEY`, or `HIDYLAN_API_KEY`.
+**Using SecretRef** (recommended):
 
-1. **Environment variable** (recommended):
+```json5
+{
+  http: {
+    provider: "dknownai",
+    apiKey: {
+      source: "env",
+      provider: "default",
+      id: "DKNOWNAI_API_KEY"
+    }
+  }
+}
+```
 
-   ```json5
-   "apiKey": "${DKNOWNAI_API_KEY}"
-   ```
+SecretRef supports three sources:
 
-   Set the environment variable before starting OpenClaw:
-   ```bash
-   export DKNOWNAI_API_KEY=sk-...
-   ```
+| Source | Description | Example |
+|--------|-------------|---------|
+| `env` | Environment variable | `{ source: "env", provider: "default", id: "MY_KEY" }` |
+| `file` | JSON file (JSON Pointer path) | `{ source: "file", provider: "my-secrets", id: "/providers/openai/apiKey" }` |
+| `exec` | External command (1Password, Vault, sops) | `{ source: "exec", provider: "vault", id: "openai/api-key" }` |
 
-2. **Plain text** (not recommended for production):
+For detailed SecretRef configuration and setup, see the [OpenClaw Secrets documentation](https://docs.openclaw.ai/gateway/secrets).
 
-   ```json5
-   "apiKey": "sk-..."
-   ```
+**Plain text** (not recommended):
 
-3. **Per-channel override**:
+```json5
+"apiKey": "sk-..."
+```
 
-   ```json5
-   {
-     "guardrail-bridge": {
-       config: {
-         channels: {
-           "discord:@announcements": {
-             connector: "http",
-             http: {
-               provider: "dknownai",
-               apiKey: "${DKNOWNAI_API_KEY}",
-             },
-             blockMessage: "Only compliant content is allowed.",
-           },
-         },
-       },
-     },
-   }
-   ```
+> **⚠️ Security Warning**: Never commit API keys in plaintext to version control. Always use SecretRef for production deployments.
+
+**Per-channel override**:
+
+```json5
+{
+  "guardrail-bridge": {
+    config: {
+      channels: {
+        "discord:@announcements": {
+          connector: "http",
+          http: {
+            provider: "dknownai",
+            apiKey: {
+              source: "env",
+              provider: "default",
+              id: "DKNOWNAI_API_KEY"
+            }
+          },
+          blockMessage: "Only compliant content is allowed."
+        },
+      },
+    },
+  }
+}
+```
 
 ### Common Fields
 
