@@ -18,9 +18,9 @@
 
 ## 为什么需要它
 
-在一次 OpenClaw 测试中，未启用 Guardrail Bridge 的 Agent 一开始拒绝泄露 API Key，但在多轮诱导、Base64 编码请求和紧急施压后，最终返回了编码后的凭据。
+OpenClaw Agent 本身已经具备一定的基础安全能力。在我们的测试中，未启用 Guardrail Bridge 的 Agent 面对直接索要 API Key 的请求时，一开始会拒绝披露，并建议通过更安全的运维方式处理。
 
-启用 Guardrail Bridge 后，同类敏感凭据请求在披露前被策略拦截。
+风险出现在后续多轮诱导、Base64 编码请求和紧急施压之后。没有额外 guardrail 时，Agent 最终返回了编码后的凭据；启用 Guardrail Bridge 后，这类后续外泄攻击会在披露前被策略拦截。
 
 ![Guardrail Bridge API key leakage comparison](https://raw.githubusercontent.com/guardrail-bridge/guardrail-bridge-plugin/main/assets/api-key-leakage-comparison.svg)
 

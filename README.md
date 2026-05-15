@@ -18,9 +18,9 @@ Published archives include the runtime bundle, plugin manifest, assets, and end-
 
 ## Why it matters
 
-In an OpenClaw test, an unprotected agent initially refused to reveal an API key, but eventually returned a Base64-encoded credential after multi-turn social pressure.
+OpenClaw agents already have baseline safety behavior. In our test, the unprotected agent initially refused a direct request to reveal an API key and suggested safer operational steps.
 
-With Guardrail Bridge enabled, the same credential exfiltration attempt was blocked before disclosure.
+The risk appeared after the conversation shifted into multi-turn pressure and an encoding request. Without an additional guardrail, the agent eventually returned a Base64-encoded credential. With Guardrail Bridge enabled, that later-stage exfiltration attempt was blocked before disclosure.
 
 ![Guardrail Bridge API key leakage comparison](https://raw.githubusercontent.com/guardrail-bridge/guardrail-bridge-plugin/main/assets/api-key-leakage-comparison.svg)
 
