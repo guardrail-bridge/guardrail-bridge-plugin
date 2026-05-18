@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      npm_tag:
+        description: "Optional npm dist-tag override"
+        required: false
+        default: ""
+      version:
+        description: "Version to verify against package.json (optional)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Run typecheck
+        run: npm run typecheck
+
+      - name: Build package
+        run: npm run build
+
+      - name: Verify tag matches package version
+        if: github.event_name == 'push'
+        env:
+          GIT_TAG: ${{ github.ref_name }}
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          EXPECTED_TAG="v${PACKAGE_VERSION}"
+          if [ "$GIT_TAG" != "$EXPECTED_TAG" ]; then
+            echo "Tag $GIT_TAG does not match package version $PACKAGE_VERSION"
+            exit 1
+          fi
+
+      - name: Verify requested version matches package version
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+        env:
+          REQUESTED_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if [ "$REQUESTED_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Requested version $REQUESTED_VERSION does not match package version $PACKAGE_VERSION"
+            exit 1
+          fi
+
+      - name: Publish package to npm
+        env:
+          NPM_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.npm_tag || '' }}
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if [ -z "$NPM_TAG" ]; then
+            case "$PACKAGE_VERSION" in
+              *-*)
+                NPM_TAG="next"
+                ;;
+              *)
+                NPM_TAG="latest"
+                ;;
+            esac
+          fi
+
+          if [ "$NPM_TAG" = "latest" ]; then
+            npm publish --provenance --access public
+          else
+            npm publish --provenance --access public --tag "$NPM_TAG"
+          fi
