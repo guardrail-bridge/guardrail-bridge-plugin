@@ -1,6 +1,6 @@
 {
   "name": "@guardrailbridge/guardrail-bridge",
-  "version": "1.0.4",
+  "version": "1.0.5-rc.0",
   "private": false,
   "description": "Guardrail plugin for OpenClaw that blocks prompt injection, jailbreak attempts, and sensitive credential exfiltration before agent dispatch.",
   "type": "module",
